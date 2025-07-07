@@ -2,6 +2,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { promises as fsPromises } from 'node:fs';
 import { Buffer } from 'node:buffer';
+import crypto from 'crypto';
 
 import express from 'express';
 import sanitize from 'sanitize-filename';
@@ -1172,6 +1173,7 @@ router.post('/delete', validateAvatarUrlMiddleware, async function (request, res
         }
     }
 
+    await writeCharacterIndex(request.user.directories.characters);
     return response.sendStatus(200);
 });
 
@@ -1191,9 +1193,14 @@ router.post('/delete', validateAvatarUrlMiddleware, async function (request, res
  */
 router.post('/all', async function (request, response) {
     try {
+        if (useShallowCharacters) {
+            const index = await readCharacterIndex(request.user.directories.characters);
+            return response.send(index);
+        }
+        // Fallback: full data (legacy)
         const files = fs.readdirSync(request.user.directories.characters);
         const pngFiles = files.filter(file => file.endsWith('.png'));
-        const processingPromises = pngFiles.map(file => processCharacter(file, request.user.directories, { shallow: useShallowCharacters }));
+        const processingPromises = pngFiles.map(file => processCharacter(file, request.user.directories, { shallow: false }));
         const data = (await Promise.all(processingPromises)).filter(c => c.name);
         return response.send(data);
     } catch (err) {
@@ -1319,6 +1326,7 @@ router.post('/import', async function (request, response) {
             invalidateThumbnail(request.user.directories, 'avatar', `${preservedFileName}.png`);
         }
 
+        await writeCharacterIndex(request.user.directories.characters);
         response.send({ file_name: fileName });
     } catch (err) {
         console.error(err);
@@ -1364,6 +1372,7 @@ router.post('/duplicate', validateAvatarUrlMiddleware, async function (request, 
 
         fs.copyFileSync(filename, newFilename);
         console.info(`${filename} was copied to ${newFilename}`);
+        await writeCharacterIndex(request.user.directories.characters);
         response.send({ path: path.parse(newFilename).base });
     }
     catch (error) {
@@ -1415,3 +1424,74 @@ router.post('/export', validateAvatarUrlMiddleware, async function (request, res
         response.sendStatus(500);
     }
 });
+
+/**
+ * Helper to build a minimal character index from PNG files.
+ * @param {string} charactersDir - Directory containing character PNGs
+ * @returns {Promise<Array>} - Array of minimal character info
+ */
+async function buildCharacterIndex(charactersDir) {
+    const files = await fsPromises.readdir(charactersDir);
+    const pngFiles = files.filter(file => file.endsWith('.png'));
+    // Use processCharacter to get all shallow fields
+    const directories = { characters: charactersDir, chats: path.join(path.dirname(charactersDir), 'chats') };
+    const index = await Promise.all(pngFiles.map(async (file) => {
+        try {
+            const char = await processCharacter(file, directories, { shallow: true });
+            if (!char) return null;
+            return {
+                id: crypto.createHash('md5').update(file).digest('hex'),
+                name: char.name,
+                avatar: file,
+                tags: char.tags || [],
+                type: 'character',
+                create_date: char.create_date,
+                date_added: char.date_added,
+                date_last_chat: char.date_last_chat,
+                chat_size: char.chat_size,
+                data_size: char.data_size,
+                fav: char.fav,
+            };
+        } catch (e) {
+            return null;
+        }
+    }));
+    return index.filter(i => i && i.type === 'character' && i.name && i.avatar);
+}
+
+/**
+ * Write the character index to disk.
+ */
+async function writeCharacterIndex(charactersDir) {
+    const index = await buildCharacterIndex(charactersDir);
+    const indexPath = path.join(charactersDir, 'characters-index.json');
+    await fsPromises.writeFile(indexPath, JSON.stringify(index, null, 2));
+}
+
+/**
+ * Read the character index from disk, or rebuild if missing.
+ */
+async function readCharacterIndex(charactersDir) {
+    const indexPath = path.join(charactersDir, 'characters-index.json');
+    try {
+        const data = await fsPromises.readFile(indexPath, 'utf-8');
+        return JSON.parse(data);
+    } catch (e) {
+        // If not found or error, rebuild
+        await writeCharacterIndex(charactersDir);
+        const data = await fsPromises.readFile(indexPath, 'utf-8');
+        return JSON.parse(data);
+    }
+}
+
+// --- Add endpoint to serve the index ---
+router.get('/index', async function (request, response) {
+    try {
+        const index = await readCharacterIndex(request.user.directories.characters);
+        response.json(index);
+    } catch (err) {
+        response.status(500).json({ error: 'Failed to load character index.' });
+    }
+});
+
+export { writeCharacterIndex };
