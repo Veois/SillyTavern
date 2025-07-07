@@ -1438,20 +1438,22 @@ export async function selectCharacterById(id, { switchMenu = true } = {}) {
     }
 
     if (selected_group || String(this_chid) !== String(id)) {
-        //if clicked on a different character from what was currently selected
+        // If clicked on a different character from what was currently selected
         if (!is_send_press) {
             await clearChat();
             cancelTtsPlay();
             resetSelectedGroup();
             this_edit_mes_id = undefined;
             selected_button = 'character_edit';
-            setCharacterId(id);
+            setCharacterId(id); // <-- Set active character FIRST
             chat.length = 0;
             chat_metadata = {};
+            await unshallowCharacter(id); // <-- THEN load full data
+            select_selected_character(id, { switchMenu: true });
             await getChat();
         }
     } else {
-        //if clicked on character that was already selected
+        // If clicked on character that was already selected
         switchMenu && (selected_button = 'character_edit');
         await unshallowCharacter(this_chid);
         select_selected_character(this_chid, { switchMenu });
@@ -1592,7 +1594,16 @@ export async function printCharacters(fullRefresh = false) {
                 $(listId).append(emptyBlock);
             }
             let displayCount = 0;
+            console.log('Character data:', data);
             for (const i of data) {
+                if (!i) {
+                    console.warn('Null or undefined character entry:', i);
+                    continue;
+                }
+                if (!i.type) {
+                    console.warn('Character entry missing type:', i);
+                    continue;
+                }
                 switch (i.type) {
                     case 'character':
                         $(listId).append(getCharacterBlock(i.item, i.id));
@@ -1840,10 +1851,8 @@ function getCharacterSource(chId = this_chid) {
 }
 
 export async function getCharacters() {
-    const response = await fetch('/api/characters/all', {
-        method: 'POST',
+    const response = await fetch('/api/characters/index', {
         headers: getRequestHeaders(),
-        body: JSON.stringify({}),
     });
     if (response.ok === true) {
         const previousAvatar = this_chid !== undefined ? characters[this_chid]?.avatar : null;
@@ -1852,6 +1861,7 @@ export async function getCharacters() {
         for (let i = 0; i < getData.length; i++) {
             characters[i] = getData[i];
             characters[i]['name'] = DOMPurify.sanitize(characters[i]['name']);
+            characters[i]['shallow'] = true; // <--- ADD THIS LINE
 
             // For dropped-in cards
             if (!characters[i]['chat']) {
@@ -7291,7 +7301,6 @@ export async function unshallowCharacter(characterId) {
         return;
     }
 
-    /** @type {import('./scripts/char-data.js').v1CharData} */
     const character = characters[characterId];
     if (!character) {
         console.debug('Character not found:', characterId);
@@ -7309,7 +7318,18 @@ export async function unshallowCharacter(characterId) {
         return;
     }
 
-    await getOneCharacter(avatar);
+    // Fetch full data and update the character in the array
+    const response = await fetch('/api/characters/get', {
+        method: 'POST',
+        headers: getRequestHeaders(),
+        body: JSON.stringify({ avatar_url: avatar }),
+    });
+    if (response.ok) {
+        const fullData = await response.json();
+        Object.assign(characters[characterId], fullData);
+        characters[characterId].shallow = false;
+        console.log('Character after unshallow:', characters[characterId]);
+    }
 }
 
 export async function getChat() {
