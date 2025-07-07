@@ -47,6 +47,8 @@ import { router as scaleAltRouter } from './endpoints/backends/scale-alt.js';
 import { router as speechRouter } from './endpoints/speech.js';
 import { router as azureRouter } from './endpoints/azure.js';
 import { router as dataMaidRouter } from './endpoints/data-maid.js';
+import { writeCharacterIndex } from './endpoints/characters.js';
+import { getAllUserHandles, getUserDirectories } from './users.js';
 
 /**
  * @typedef {object} ServerStartupResult
@@ -383,6 +385,18 @@ export class ServerStartup {
         const [v6Failed, v4Failed] = await this.#startHTTPorHTTPS(useIPv6, useIPv4);
         const result = { v6Failed, v4Failed, useIPv6, useIPv4 };
         this.#handleServerListenFail(result);
+
+        // After server listen, build character index for all users
+        try {
+            const userHandles = await getAllUserHandles();
+            for (const handle of userHandles) {
+                const directories = getUserDirectories(handle);
+                await writeCharacterIndex(directories.characters);
+            }
+            console.log('Character indexes built for all users.');
+        } catch (e) {
+            console.error('Failed to build character indexes at startup:', e);
+        }
         return result;
     }
 }
