@@ -42,8 +42,7 @@ If you have many characters, this means a lot of files are read, parsed, and sen
 
 - Bulk Import Tags
 - imagen button for image generation in settings. (Adds a button of the same name in the Image Generation settings in order to conveniently and quickly send only what is in the < imagen > < /imagen > box as a prompt, instead of sending the entire text of the LLM.)
-
-### - A character index system was added:
+- A character index system was added:
 A characters-index.json file is now created and updated in each user's character directory.
 This index contains only minimal info: id, name, avatar, tags, etc.
 The index is updated automatically when ST start up, characters are added, removed, etc.
