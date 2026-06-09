@@ -46,7 +46,7 @@ If you have many characters, this means a lot of files are read, parsed, and sen
 A characters-index.json file is now created and updated in each user's character directory.
 This index contains only minimal info: id, name, avatar, tags, etc.
 The index is updated automatically when ST start up, characters are added, removed, etc.
-### Returns the lightweight character index for fast frontend loading.
+Returns the lightweight character index for fast frontend loading.
 
 # I am an unqualified programmer, the code is written using AI.
 
