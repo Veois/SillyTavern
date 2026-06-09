@@ -279,6 +279,7 @@ const defaultSettings = {
     multimodal_captioning: false,
     snap: false,
     free_extend: false,
+    imagen_prompt_only: false,
     function_tool: false,
     minimal_prompt_processing: false,
 
@@ -549,6 +550,7 @@ async function loadSettings() {
     $('#sd_clip_skip_value').val(extension_settings.sd.clip_skip);
     $('#sd_seed').val(extension_settings.sd.seed);
     $('#sd_free_extend').prop('checked', extension_settings.sd.free_extend);
+    $('#sd_imagen_prompt_only').prop('checked', extension_settings.sd.imagen_prompt_only);
     $('#sd_wand_visible').prop('checked', extension_settings.sd.wand_visible);
     $('#sd_command_visible').prop('checked', extension_settings.sd.command_visible);
     $('#sd_interactive_visible').prop('checked', extension_settings.sd.interactive_visible);
@@ -989,6 +991,12 @@ function onRefineModeInput() {
 
 function onFreeExtendInput() {
     extension_settings.sd.free_extend = !!$('#sd_free_extend').prop('checked');
+    saveSettingsDebounced();
+}
+
+function onImagenPromptOnlyInput() {
+    // Toggle: Use only the text inside <imagen>...</imagen> as the image prompt (when present)
+    extension_settings.sd.imagen_prompt_only = !!$('#sd_imagen_prompt_only').prop('checked');
     saveSettingsDebounced();
 }
 
@@ -2927,6 +2935,27 @@ function processReply(str) {
     return str;
 }
 
+/**
+ * Extracts the text inside the first <imagen>...</imagen> block.
+ * Returns null if the block is not found or the feature is disabled.
+ */
+function extractImagenPrompt(str) {
+    if (!extension_settings.sd?.imagen_prompt_only) {
+        return null;
+    }
+
+    if (typeof str !== 'string' || !str.length) {
+        return null;
+    }
+
+    const match = /&lt;imagen&gt;([\s\S]*?)&lt;\/imagen&gt;/i.exec(str);
+    // If processed text has already escaped angle brackets, try raw form as well
+    const rawMatch = /<imagen>([\s\S]*?)<\/imagen>/i.exec(str);
+
+    const inner = (match?.[1] || rawMatch?.[1] || '').trim();
+    return inner || null;
+}
+
 function getRawLastMessage() {
     const getLastUsableMessage = () => {
         for (const message of context.chat.slice().reverse()) {
@@ -2946,6 +2975,14 @@ function getRawLastMessage() {
 
     const context = getContext();
     const lastMessage = getLastUsableMessage();
+    
+    // If the feature is enabled and the last message contains an <imagen>...</imagen>; block,
+    // use only its contents as the prompt.
+    const extractedImagen = extractImagenPrompt(lastMessage.mes);
+    if (extractedImagen) {
+        return processReply(extractedImagen);
+    }
+    
     const character = context.groupId
         ? context.characters.find(c => c.avatar === lastMessage.original_avatar)
         : context.characters[context.characterId];
@@ -3186,6 +3223,13 @@ async function getPrompt(generationType, message, trigger, quietPrompt, combineN
         prompt = generateFreeModePrompt(prompt.trim(), combineNegatives);
     }
 
+    // If enabled, extract and use only the text inside <imagen>...</imagen> (when present).
+    // Keep existing sanitation for consistency with current pipeline.
+    const imagenExtracted = extractImagenPrompt(prompt);
+    if (imagenExtracted) {
+        prompt = processReply(imagenExtracted);
+    }
+    
     if (generationType !== generationMode.FREE) {
         prompt = await refinePrompt(prompt);
     }
@@ -3292,7 +3336,11 @@ function getUserAvatarUrl() {
 async function generatePrompt(quietPrompt) {
     const toast = toastr.info('Generating image prompt with an LLM...', 'Image Generation');
     const reply = await generateQuietPrompt({ quietPrompt });
-    const processedReply = processReply(reply);
+    // If enabled, extract the imagen block BEFORE sanitization.
+    // processReply() removes '/', which would break </imagen> otherwise.
+    const imagenExtracted = extractImagenPrompt(reply);
+    const toProcess = imagenExtracted || reply;
+    const processedReply = processReply(toProcess);
     toastr.clear(toast);
 
     if (!processedReply) {
@@ -5871,6 +5919,7 @@ export async function init() {
     $('#sd_seed').on('input', onSeedInput);
     $('#sd_character_prompt_share').on('input', onCharacterPromptShareInput);
     $('#sd_free_extend').on('input', onFreeExtendInput);
+    $('#sd_imagen_prompt_only').on('input', onImagenPromptOnlyInput);
     $('#sd_wand_visible').on('input', onWandVisibleInput);
     $('#sd_command_visible').on('input', onCommandVisibleInput);
     $('#sd_interactive_visible').on('input', onInteractiveVisibleInput);
