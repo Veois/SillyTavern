@@ -34,7 +34,7 @@ The backend endpoint /api/characters/all reads every character .png file, parses
 Potential for Large Data:
 If you have many characters, this means a lot of files are read, parsed, and sent to the browser before the UI is usable.
 
-# In short, the more characters you have, the longer the interface takes to load. This fork is designed to fix this.
+# In short, the more characters you have, the longer the interface takes to load. This fork is create to fix this.
 
 ## To enable indexing, go to the "config.yalm" file and change lazyLoadCharacters: false to lazyLoadCharacters: true.
 
