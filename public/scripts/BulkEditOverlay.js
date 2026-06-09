@@ -116,6 +116,17 @@ class CharacterContextMenu {
         await deleteCharacter(characterKey, { deleteChats: deleteChats });
     };
 
+    /**
+     * Import tags for all selected characters
+     * @returns {Promise<void>}
+     */
+    static importTagsBulk = async (characterIds) => {
+        for (const characterId of characterIds) {
+            await importTags(characters[characterId], { importSetting: tag_import_setting.ALL });
+        }
+        printCharactersDebounced();
+    };
+
     static #getCharacter = (characterId) => characters[characterId] ?? null;
 
     /**
@@ -155,6 +166,7 @@ class CharacterContextMenu {
         const contextMenuItems = [
             { id: 'character_context_menu_favorite', callback: characterGroupOverlay.handleContextMenuFavorite },
             { id: 'character_context_menu_duplicate', callback: characterGroupOverlay.handleContextMenuDuplicate },
+            { id: 'character_context_menu_import_tags', callback: characterGroupOverlay.handleContextMenuImportTags },
             { id: 'character_context_menu_delete', callback: characterGroupOverlay.handleContextMenuDelete },
             { id: 'character_context_menu_persona', callback: characterGroupOverlay.handleContextMenuPersona },
             { id: 'character_context_menu_tag', callback: characterGroupOverlay.handleContextMenuTag },
@@ -473,6 +485,12 @@ class BulkEditOverlay {
 
         this.container = document.getElementById(BulkEditOverlay.containerId);
 
+        // Add handler for bulkImportTagsButton
+        this.bulkImportTagsButton = document.getElementById('bulkImportTagsButton');
+        if (this.bulkImportTagsButton) {
+            this.bulkImportTagsButton.addEventListener('click', () => this.handleContextMenuImportTags());
+        }
+
         eventSource.on(event_types.CHARACTER_GROUP_OVERLAY_STATE_CHANGE_AFTER, this.handleStateChange);
         bulkEditOverlayInstance = Object.freeze(this);
     }
@@ -724,6 +742,11 @@ class BulkEditOverlay {
     updateSelectedCount = (countOverride = undefined) => {
         const count = countOverride ?? this.selectedCharacters.length;
         $(`#${BulkEditOverlay.bulkSelectedCountId}`).text(count).attr('title', `${count} characters selected`);
+
+        // Display/hide bulkImportTagsButton
+        if (this.bulkImportTagsButton) {
+            this.bulkImportTagsButton.style.display = count > 0 ? '' : 'none';
+        }
     };
 
     /**
@@ -794,6 +817,15 @@ class BulkEditOverlay {
     handleContextMenuDuplicate = () => Promise.all(this.selectedCharacters.map(async characterId => CharacterContextMenu.duplicate(characterId)))
         .then(() => getCharacters())
         .then(() => this.browseState());
+
+    /**
+     * Handler for bulk import of tags
+     * @returns {Promise<void>}
+     */
+    handleContextMenuImportTags = async () => {
+        await CharacterContextMenu.importTagsBulk(this.selectedCharacters);
+        this.browseState();
+    };
 
     /**
      * Sequentially handle all character-to-persona conversions.
