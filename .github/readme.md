@@ -40,7 +40,7 @@ If you have many characters, this means a lot of files are read, parsed, and sen
 
 # What was changed in the fork:
 
-- Bulk Import Tags
+- Massive Import Tags
 - imagen button for image generation in settings. (Adds a button of the same name in the Image Generation settings in order to conveniently and quickly send only what is in the < imagen > < /imagen > box as a prompt, instead of sending the entire text of the LLM.)
 - A character index system was added:
 A characters-index.json file is now created and updated in each user's character directory.
